@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>赛博朋克AI剧情系统</title>
+<title>赛博朋克AI RPG系统</title>
 
 <style>
 body{
@@ -13,70 +13,80 @@ body{
     padding:20px;
 }
 
-#output{
-    white-space:pre-wrap;
-    margin-bottom:20px;
-    line-height:1.6;
-    min-height:300px;
+#game{
+    max-width:900px;
+    margin:auto;
 }
 
-input{
-    width:100%;
-    padding:12px;
-    background:#111;
-    color:#00ffcc;
-    border:1px solid #00ffcc;
-    margin-top:10px;
+#output{
+    white-space:pre-wrap;
+    line-height:1.6;
+    margin-bottom:20px;
 }
 
 button{
+    display:block;
     margin-top:10px;
-    padding:10px 20px;
+    padding:10px;
+    width:100%;
     background:#00ffcc;
     border:none;
     cursor:pointer;
+    font-family:monospace;
 }
 
 button:hover{
     background:#00ccaa;
+}
+
+#status{
+    border-top:1px solid #00ffcc;
+    margin-top:20px;
+    padding-top:10px;
 }
 </style>
 </head>
 
 <body>
 
-<h2>赛博朋克剧情终端</h2>
-
-<div id="output">正在连接神经网络...</div>
-
-<input id="playerInput" placeholder="输入你的行动..." />
-<button onclick="sendMessage()">发送</button>
+<div id="game">
+<h2>赛博朋克AI RPG系统</h2>
+<div id="output">正在初始化世界...</div>
+<div id="buttons"></div>
+<div id="status"></div>
+</div>
 
 <script>
 
 const SYSTEM_PROMPT = `
-你现在是一名赛博朋克世界的AI游戏主持人。
+你是一名赛博朋克世界的AI游戏主持人。
 
-必须严格遵循以下规则系统运行游戏：
+⚠️ 你必须始终只返回 JSON。
 
-【世界观】
-赛博朋克2007，反乌托邦硬核科幻风格。
+格式严格如下：
 
-【叙事要求】
-- 开篇必须生成完整角色卡
-- 开场正文400-600字
-- 每轮正文300-500字
-- 风格冷峻、沉浸式
+{
+  "narrative": "剧情正文",
+  "state": {
+    "hp": 数字,
+    "stamina": 数字,
+    "reputation": 数字,
+    "money": 数字
+  },
+  "options": [
+    { "id": 1, "text": "选项描述" },
+    { "id": 2, "text": "选项描述" },
+    { "id": 3, "text": "选项描述" }
+  ]
+}
 
-【核心机制】
-- 判定制（属性 + 技能 ≥ 难度阈值）
-- 失败不得告知具体数值
-- 每轮固定生成3个选项
-
-【选项格式】
-选项1：行动描述（调用属性：XXX，难度：X）
-选项2：行动描述（调用属性：XXX，难度：X）
-选项3：行动描述（调用属性：XXX，难度：X）
+规则：
+- 开场生成角色和剧情
+- 每轮给3个选项
+- narrative 400-600字
+- 不得返回任何额外说明
+- 不得使用代码块
+- 只返回 JSON
 
 现在开始游戏。
 `;
@@ -85,16 +95,8 @@ let conversation = [
     { role: "system", content: SYSTEM_PROMPT }
 ];
 
-async function startGame() {
+async function startGame(){
     await callAI("开始生成角色与开场剧情。");
-}
-
-async function sendMessage(){
-    const input = document.getElementById("playerInput").value;
-    if(!input) return;
-
-    document.getElementById("playerInput").value = "";
-    await callAI(input);
 }
 
 async function callAI(message){
@@ -118,21 +120,54 @@ async function callAI(message){
 
         if (!data.choices) {
             document.getElementById("output").innerText =
-                "服务器返回异常：\n" + JSON.stringify(data, null, 2);
+                "服务器异常：\n" + JSON.stringify(data, null, 2);
             return;
         }
 
         const reply = data.choices[0].message.content;
 
+        let parsed;
+
+        try {
+            parsed = JSON.parse(reply);
+        } catch (e) {
+            document.getElementById("output").innerText =
+                "JSON解析失败：\n" + reply;
+            return;
+        }
+
+        renderGame(parsed);
+
         conversation.push({ role: "assistant", content: reply });
 
-        document.getElementById("output").innerText = reply;
-
-    } catch (error) {
-
+    } catch (error){
         document.getElementById("output").innerText =
             "连接服务器失败：\n" + error.message;
     }
+}
+
+function renderGame(data){
+
+    document.getElementById("output").innerText = data.narrative;
+
+    const buttonsDiv = document.getElementById("buttons");
+    buttonsDiv.innerHTML = "";
+
+    data.options.forEach(option => {
+        const btn = document.createElement("button");
+        btn.innerText = option.id + ". " + option.text;
+        btn.onclick = () => callAI(option.text);
+        buttonsDiv.appendChild(btn);
+    });
+
+    const statusDiv = document.getElementById("status");
+
+    statusDiv.innerHTML = `
+生命值: ${data.state.hp}  
+耐力: ${data.state.stamina}  
+声誉: ${data.state.reputation}  
+资金: ${data.state.money}
+`;
 }
 
 startGame();
