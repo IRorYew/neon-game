@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>赛博朋克AI RPG系统</title>
+<title>赛博朋克沉浸式RPG</title>
 
 <style>
 body{
@@ -13,22 +13,23 @@ body{
     padding:20px;
 }
 
-#game{
-    max-width:900px;
+#container{
+    max-width:1000px;
     margin:auto;
 }
 
-#output{
+#narrative{
     white-space:pre-wrap;
-    line-height:1.6;
+    line-height:1.7;
     margin-bottom:20px;
+    min-height:300px;
 }
 
 button{
     display:block;
-    margin-top:10px;
-    padding:10px;
     width:100%;
+    padding:12px;
+    margin-top:10px;
     background:#00ffcc;
     border:none;
     cursor:pointer;
@@ -39,31 +40,46 @@ button:hover{
     background:#00ccaa;
 }
 
+input{
+    width:100%;
+    padding:10px;
+    margin-top:10px;
+    background:#111;
+    color:#00ffcc;
+    border:1px solid #00ffcc;
+}
+
 #status{
-    border-top:1px solid #00ffcc;
     margin-top:20px;
-    padding-top:10px;
+    border-top:1px solid #00ffcc;
+    padding-top:15px;
 }
 </style>
 </head>
 
 <body>
 
-<div id="game">
-<h2>赛博朋克AI RPG系统</h2>
-<div id="output">正在初始化世界...</div>
+<div id="container">
+<h2>赛博朋克 · 沉浸式RPG系统</h2>
+
+<div id="narrative">正在构建夜之城...</div>
+
 <div id="buttons"></div>
+
+<input id="freeInput" placeholder="输入你的自由行动..." />
+<button onclick="sendFree()">执行行动</button>
+
 <div id="status"></div>
 </div>
 
 <script>
 
 const SYSTEM_PROMPT = `
-你是一名赛博朋克世界的AI游戏主持人。
+你是一名赛博朋克世界的沉浸式RPG主持人。
 
-⚠️ 你必须始终只返回 JSON。
+⚠️ 你必须只返回 JSON，不得返回任何解释或额外文本。
 
-格式严格如下：
+格式必须严格如下：
 
 {
   "narrative": "剧情正文",
@@ -71,21 +87,30 @@ const SYSTEM_PROMPT = `
     "hp": 数字,
     "stamina": 数字,
     "reputation": 数字,
-    "money": 数字
+    "money": 数字,
+    "time": "当前时间",
+    "location": "当前地点"
   },
   "options": [
-    { "id": 1, "text": "选项描述" },
-    { "id": 2, "text": "选项描述" },
-    { "id": 3, "text": "选项描述" }
+    { "id": 1, "text": "行动描述" },
+    { "id": 2, "text": "行动描述" },
+    { "id": 3, "text": "行动描述" }
   ]
 }
 
-规则：
-- 开场生成角色和剧情
-- 每轮给3个选项
+沉浸规则：
+
+- 使用第二人称（你）
+- 每轮必须描写视觉/声音/气味等感官细节
+- 必须标注时间与地点
+- 行动消耗时间
+- 世界会变化
+- NPC记住你的行为
+- 失败必须有真实后果
 - narrative 400-600字
-- 不得返回任何额外说明
+- 每轮必须给3个选项
 - 不得使用代码块
+- 不得解释JSON
 - 只返回 JSON
 
 现在开始游戏。
@@ -96,7 +121,7 @@ let conversation = [
 ];
 
 async function startGame(){
-    await callAI("开始生成角色与开场剧情。");
+    await callAI("生成角色与开场剧情。");
 }
 
 async function callAI(message){
@@ -119,7 +144,7 @@ async function callAI(message){
         const data = await response.json();
 
         if (!data.choices) {
-            document.getElementById("output").innerText =
+            document.getElementById("narrative").innerText =
                 "服务器异常：\n" + JSON.stringify(data, null, 2);
             return;
         }
@@ -131,7 +156,7 @@ async function callAI(message){
         try {
             parsed = JSON.parse(reply);
         } catch (e) {
-            document.getElementById("output").innerText =
+            document.getElementById("narrative").innerText =
                 "JSON解析失败：\n" + reply;
             return;
         }
@@ -141,14 +166,14 @@ async function callAI(message){
         conversation.push({ role: "assistant", content: reply });
 
     } catch (error){
-        document.getElementById("output").innerText =
+        document.getElementById("narrative").innerText =
             "连接服务器失败：\n" + error.message;
     }
 }
 
 function renderGame(data){
 
-    document.getElementById("output").innerText = data.narrative;
+    document.getElementById("narrative").innerText = data.narrative;
 
     const buttonsDiv = document.getElementById("buttons");
     buttonsDiv.innerHTML = "";
@@ -160,14 +185,22 @@ function renderGame(data){
         buttonsDiv.appendChild(btn);
     });
 
-    const statusDiv = document.getElementById("status");
+    document.getElementById("status").innerHTML = `
+时间: ${data.state.time}  
+地点: ${data.state.location}  
 
-    statusDiv.innerHTML = `
 生命值: ${data.state.hp}  
 耐力: ${data.state.stamina}  
 声誉: ${data.state.reputation}  
 资金: ${data.state.money}
 `;
+}
+
+function sendFree(){
+    const text = document.getElementById("freeInput").value;
+    if(!text) return;
+    document.getElementById("freeInput").value = "";
+    callAI(text);
 }
 
 startGame();
