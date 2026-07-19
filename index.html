@@ -52,9 +52,8 @@ background:#00ccaa;
 
 <script>
 
-const API_KEY = "sk-946f5273a70f4995a3e41944f2e38717";
+const API_KEY = "在这里粘贴你的新API_KEY";
 
-const SYSTEM_PROMPT = `
 const SYSTEM_PROMPT = `
 你现在是一名赛博朋克世界的AI游戏主持人。
 
@@ -134,6 +133,12 @@ async function callAI(message){
     });
 
     const data = await response.json();
+
+    if (!data.choices) {
+        document.getElementById("output").innerText =
+            "发生错误：" + JSON.stringify(data);
+        return;
+    }
 
     const reply = data.choices[0].message.content;
 
