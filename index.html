@@ -11,7 +11,6 @@ body{
     background:black;
     color:#00ffcc;
     font-family:monospace;
-    overflow-x:hidden;
 }
 
 #hud{
@@ -106,25 +105,47 @@ button:disabled{opacity:0.5;}
 
 <script>
 
-const SYSTEM_PROMPT = `
-你是一名赛博朋克世界的沉浸式RPG主持人。
-必须只返回JSON:
-{
- "narrative":"",
- "state":{"hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":""},
- "options":[{"id":1,"text":""},{"id":2,"text":""},{"id":3,"text":""}]
-}
-规则:
-- 第二人称
-- 强沉浸感
-- 400-600字
-- 每轮3选项
-- 只返回JSON
-`;
+let state={
+    hp:100,
+    stamina:100,
+    reputation:0,
+    money:500,
+    time:"22:10",
+    location:"夜之城 · 贫民区"
+};
 
-let conversation = [
-    {role:"system",content:SYSTEM_PROMPT}
-];
+function randomNarrative(action){
+    return `时间 ${state.time} ｜ 地点 ${state.location}
+
+霓虹灯在雨水中扭曲成破碎的光影。空气里混着臭氧与廉价酒精的味道。远处机械义肢运转的金属声此起彼伏。
+
+你刚刚选择：${action}
+
+一辆改装悬浮摩托从街角掠过，溅起冷雨。街边的流浪黑客盯着你，像在评估你的价值。
+
+城市正在记录你的每一次选择。`;
+}
+
+function generateOptions(){
+    return [
+        {id:1,text:"走进昏暗的小巷"},
+        {id:2,text:"联系地下黑客"},
+        {id:3,text:"查看个人终端数据"}
+    ];
+}
+
+function fakeAI(action){
+
+    state.stamina-=5;
+    state.time="22:"+Math.floor(Math.random()*60).toString().padStart(2,"0");
+    state.money+=Math.floor(Math.random()*50);
+
+    return {
+        narrative: randomNarrative(action),
+        state: {...state},
+        options: generateOptions()
+    };
+}
 
 function disableAll(state){
     document.querySelectorAll("button").forEach(b=>b.disabled=state);
@@ -153,36 +174,19 @@ async function typeWriter(text){
     }
 }
 
-async function callAI(message){
+async function callAI(action){
 
-    conversation.push({role:"user",content:message});
     disableAll(true);
     const loadingInterval=startLoading();
 
-    try{
-        const response=await fetch("http://localhost:3000/api/game",{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify({
-                messages:conversation
-            })
-        });
+    await new Promise(r=>setTimeout(r,1500)); // 模拟AI延迟
 
-        const data=await response.json();
-        stopLoading(loadingInterval);
+    const data=fakeAI(action);
 
-        const reply=data.choices[0].message.content;
-        const parsed=JSON.parse(reply);
+    stopLoading(loadingInterval);
 
-        conversation.push({role:"assistant",content:reply});
-
-        await typeWriter(parsed.narrative);
-        renderGame(parsed);
-
-    }catch(err){
-        stopLoading(loadingInterval);
-        document.getElementById("narrative").innerText="错误："+err.message;
-    }
+    await typeWriter(data.narrative);
+    renderGame(data);
 
     disableAll(false);
 }
