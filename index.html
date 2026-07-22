@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>夜之城 · 沉浸式AI RPG</title>
+<title>夜之城 · AI沉浸式RPG</title>
 
 <style>
 body{
@@ -14,21 +14,18 @@ body{
     overflow-x:hidden;
 }
 
-/* HUD浮动状态栏 */
 #hud{
     position:fixed;
     top:0;
-    left:0;
     width:100%;
     background:rgba(0,0,0,0.9);
     border-bottom:1px solid #00ffcc;
     padding:8px;
     font-size:12px;
-    z-index:1000;
 }
 
 #container{
-    padding:70px 15px 20px 15px;
+    padding:70px 15px 20px;
     max-width:750px;
     margin:auto;
 }
@@ -36,12 +33,10 @@ body{
 #narrative{
     white-space:pre-wrap;
     line-height:1.6;
-    min-height:200px;
-    font-size:14px;
+    min-height:220px;
     position:relative;
 }
 
-/* 黑客扫描线 */
 .scanline{
     position:absolute;
     width:100%;
@@ -55,18 +50,6 @@ body{
     100%{top:100%}
 }
 
-.cursor{
-    display:inline-block;
-    width:8px;
-    background:#00ffcc;
-    margin-left:3px;
-    animation:blink 1s infinite;
-}
-
-@keyframes blink{
-    50%{opacity:0}
-}
-
 button{
     width:100%;
     padding:14px;
@@ -74,22 +57,16 @@ button{
     background:#001f1f;
     border:1px solid #00ffcc;
     color:#00ffcc;
-    font-family:monospace;
     opacity:0;
     transform:translateY(10px);
     animation:slideIn 0.4s forwards;
 }
 
 @keyframes slideIn{
-    to{
-        opacity:1;
-        transform:translateY(0);
-    }
+    to{opacity:1;transform:translateY(0);}
 }
 
-button:disabled{
-    opacity:0.5;
-}
+button:disabled{opacity:0.5;}
 
 #freeInput{
     width:100%;
@@ -109,7 +86,7 @@ button:disabled{
 </head>
 <body>
 
-<div id="hud">连接中...</div>
+<div id="hud">系统初始化中...</div>
 
 <div id="container">
 
@@ -137,9 +114,9 @@ const SYSTEM_PROMPT = `
  "state":{"hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":""},
  "options":[{"id":1,"text":""},{"id":2,"text":""},{"id":3,"text":""}]
 }
-沉浸规则:
+规则:
 - 第二人称
-- 强感官描写
+- 强沉浸感
 - 400-600字
 - 每轮3选项
 - 只返回JSON
@@ -153,84 +130,61 @@ function disableAll(state){
     document.querySelectorAll("button").forEach(b=>b.disabled=state);
 }
 
-function playTypeSound(){
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    osc.type="square";
-    osc.frequency.setValueAtTime(800,ctx.currentTime);
-    osc.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime+0.02);
+function startLoading(){
+    const el=document.getElementById("loading");
+    let dots=0;
+    return setInterval(()=>{
+        dots=(dots+1)%4;
+        el.innerText="AI正在生成剧情"+".".repeat(dots);
+    },400);
 }
 
-async function streamAI(message){
+function stopLoading(interval){
+    clearInterval(interval);
+    document.getElementById("loading").innerText="";
+}
+
+async function typeWriter(text){
+    const el=document.getElementById("narrative");
+    el.innerText="";
+    for(let i=0;i<text.length;i++){
+        el.innerText+=text[i];
+        await new Promise(r=>setTimeout(r,8));
+    }
+}
+
+async function callAI(message){
 
     conversation.push({role:"user",content:message});
     disableAll(true);
-
-    const response = await fetch("/api/game",{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-            model:"deepseek-chat",
-            stream:true,
-            messages:conversation
-        })
-    });
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-
-    let buffer="";
-    let fullText="";
-
-    document.getElementById("loading").innerText="AI正在生成剧情...";
-
-    while(true){
-        const {done,value} = await reader.read();
-        if(done) break;
-
-        buffer += decoder.decode(value,{stream:true});
-        const lines = buffer.split("\n");
-        buffer = lines.pop();
-
-        for(const line of lines){
-            if(line.startsWith("data:")){
-                const json = line.replace("data:","").trim();
-                if(json==="[DONE]") break;
-
-                try{
-                    const parsed = JSON.parse(json);
-                    const delta = parsed.choices?.[0]?.delta?.content;
-                    if(delta){
-                        fullText += delta;
-                        await typeStream(delta);
-                    }
-                }catch{}
-            }
-        }
-    }
-
-    document.getElementById("loading").innerText="";
-    disableAll(false);
+    const loadingInterval=startLoading();
 
     try{
-        const parsed = JSON.parse(fullText);
-        conversation.push({role:"assistant",content:fullText});
-        renderGame(parsed);
-    }catch(e){
-        console.error("JSON解析失败",fullText);
-    }
-}
+        const response=await fetch("http://localhost:3000/api/game",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+                messages:conversation
+            })
+        });
 
-async function typeStream(text){
-    const el = document.getElementById("narrative");
-    for(let i=0;i<text.length;i++){
-        el.innerText += text[i];
-        playTypeSound();
-        el.scrollTop = el.scrollHeight;
-        await new Promise(r=>setTimeout(r,10));
+        const data=await response.json();
+        stopLoading(loadingInterval);
+
+        const reply=data.choices[0].message.content;
+        const parsed=JSON.parse(reply);
+
+        conversation.push({role:"assistant",content:reply});
+
+        await typeWriter(parsed.narrative);
+        renderGame(parsed);
+
+    }catch(err){
+        stopLoading(loadingInterval);
+        document.getElementById("narrative").innerText="错误："+err.message;
     }
+
+    disableAll(false);
 }
 
 function renderGame(data){
@@ -248,19 +202,19 @@ HP:${data.state.hp} ST:${data.state.stamina} REP:${data.state.reputation} $:${da
         const btn=document.createElement("button");
         btn.style.animationDelay=(index*0.1)+"s";
         btn.innerText=opt.id+". "+opt.text;
-        btn.onclick=()=>streamAI(opt.text);
+        btn.onclick=()=>callAI(opt.text);
         btnDiv.appendChild(btn);
     });
 }
 
 function sendFree(){
     const val=document.getElementById("freeInput").value;
-    if(!val) return;
+    if(!val)return;
     document.getElementById("freeInput").value="";
-    streamAI(val);
+    callAI(val);
 }
 
-streamAI("生成角色与开场剧情。");
+callAI("生成角色与开场剧情。");
 
 </script>
 </body>
