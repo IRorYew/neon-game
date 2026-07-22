@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>夜之城 · 主持人系统V1</title>
+<title>夜之城 · RPG引擎V2</title>
 
 <style>
 body{
@@ -21,18 +21,24 @@ body{
     border-bottom:1px solid #00ffcc;
     padding:8px;
     font-size:12px;
+    z-index:1000;
 }
 
 #container{
-    padding:70px 15px 20px;
+    padding:80px 15px 30px;
     max-width:800px;
     margin:auto;
 }
 
-#narrative{
-    white-space:pre-wrap;
-    line-height:1.7;
-    min-height:240px;
+.turn{
+    margin-top:25px;
+    border-left:3px solid #00ffcc;
+    padding-left:10px;
+}
+
+.choice{
+    color:#00ffaa;
+    margin:10px 0;
 }
 
 button{
@@ -42,16 +48,7 @@ button{
     background:#001f1f;
     border:1px solid #00ffcc;
     color:#00ffcc;
-    opacity:0;
-    transform:translateY(10px);
-    animation:slideIn 0.4s forwards;
 }
-
-@keyframes slideIn{
-    to{opacity:1;transform:translateY(0);}
-}
-
-button:disabled{opacity:0.5;}
 
 #freeInput{
     width:100%;
@@ -61,192 +58,191 @@ button:disabled{opacity:0.5;}
     color:#00ffcc;
     border:1px solid #00ffcc;
 }
-
-#loading{
-    font-size:12px;
-    color:#00ffaa;
-    margin-top:10px;
-}
 </style>
 </head>
 <body>
 
-<div id="hud">系统初始化中...</div>
+<div id="hud"></div>
 
 <div id="container">
-<div id="narrative">正在构建夜之城数据流...</div>
-<div id="loading"></div>
+<div id="log"></div>
 <div id="buttons"></div>
 <input id="freeInput" placeholder="输入你的自由行动..." />
 <button onclick="sendFree()">执行行动</button>
+<button onclick="resetGame()">重置存档</button>
 </div>
 
 <script>
 
-/* ===============================
-   职业级主持人内核Prompt
-================================ */
+/* ======================
+   核心状态
+====================== */
 
-const SYSTEM_PROMPT = `
-你是赛博朋克2007沉浸式RPG主持人系统。
+let turn = 0;
 
-【绝对规则】
-1. 只能返回JSON。
-2. narrative必须450-650字。
-3. 必须包含视觉、声音、气味。
-4. 必须标明时间与地点。
-5. 每轮必须发生冲突或风险。
-6. NPC必须主动行动。
-7. 行动必须消耗时间或资源。
-8. 不得解释规则。
-9. 不得写总结句。
-
-【输出格式】
-{
- "narrative": "",
- "state": {
-   "hp":0,
-   "stamina":0,
-   "reputation":0,
-   "money":0,
-   "time":"",
-   "location":""
- },
- "options":[
-   {"id":1,"text":""},
-   {"id":2,"text":""},
-   {"id":3,"text":""}
- ]
-}
-`;
-
-/* ===============================
-   当前先使用本地AI模拟器
-================================ */
-
-let state={
+let state = {
     hp:70,
     stamina:46,
     reputation:20,
     money:1270,
     time:"21:15",
-    location:"夜之城 · 沃森区 · 数据黑市"
+    location:"夜之城 · 沃森区"
 };
+
+/* ======================
+   本地存档系统
+====================== */
+
+function saveGame(){
+    localStorage.setItem("rpg_save", JSON.stringify({
+        turn,
+        state,
+        log: document.getElementById("log").innerHTML
+    }));
+}
+
+function loadGame(){
+    const save = localStorage.getItem("rpg_save");
+    if(save){
+        const data = JSON.parse(save);
+        turn = data.turn;
+        state = data.state;
+        document.getElementById("log").innerHTML = data.log;
+        updateHUD();
+        return true;
+    }
+    return false;
+}
+
+function resetGame(){
+    localStorage.removeItem("rpg_save");
+    location.reload();
+}
+
+/* ======================
+   HUD
+====================== */
+
+function updateHUD(){
+    document.getElementById("hud").innerHTML = `
+回合: ${turn} ｜ 时间: ${state.time} ｜ 地点: ${state.location}
+<br>
+HP:${state.hp} ST:${state.stamina} REP:${state.reputation} $:${state.money}
+`;
+}
+
+/* ======================
+   剧情生成器（模拟）
+====================== */
 
 function generateNarrative(action){
 
-    state.time="21:"+Math.floor(Math.random()*60).toString().padStart(2,"0");
-    state.stamina-=5;
+    state.stamina -= 5;
+    state.time = "21:" + Math.floor(Math.random()*60).toString().padStart(2,"0");
 
     return `
 时间 ${state.time}
 地点 ${state.location}
 
-雨水顺着破裂的霓虹灯壳滴落，在油渍积水里泛出紫红色光晕。远处改装引擎低沉轰鸣，空气混着臭氧与廉价合成酒精的刺鼻味。
-
+霓虹在雨水中扭曲，空气混着臭氧与金属粉尘的味道。
 你刚刚选择：${action}
 
-巷道另一端传来金属义体关节转动的清脆声响。一个带红色光学义眼的男人正通过神经频道低声汇报你的位置。与此同时，本地频道闪过一条新闻推送——沃森区两分钟前发生帮派冲突，霓虹帮正在封锁三个街区。
+街角的监控无人机悬停片刻，红色扫描线掠过墙面。
+本地频道闪过一条帮派内部加密广播。
 
-时间在流逝。离交货还剩不到40分钟。
+城市并未停下。
 
-你意识到芯片外壳温度升高，也许有人在远程追踪。
-
-一辆悬浮摩托突然从街口掠过，溅起冷雨。驾驶者明显在寻找某个人。
-
-城市正在收紧。
+远处引擎声再次逼近。
 `;
 }
 
 function generateOptions(){
     return [
-        {id:1,text:"快速转移至高处建筑（调用属性：反应，难度：8，消耗：耐力-10，潜在奖励：脱离追踪）"},
-        {id:2,text:"尝试黑入芯片追踪信号源（调用属性：智力，难度：7，消耗：时间-30分钟，潜在奖励：掌握敌方位置）"},
-        {id:3,text:"混入街边人群降低存在感（调用属性：镇定，难度：6，消耗：时间-15分钟，潜在奖励：规避正面冲突）"}
+        {id:1,text:"寻找高处掩体（调用属性：反应，难度：8）"},
+        {id:2,text:"黑入附近监控网络（调用属性：智力，难度：7）"},
+        {id:3,text:"混入人群降低存在感（调用属性：镇定，难度：6）"}
     ];
 }
 
-function fakeAI(action){
-    return {
-        narrative: generateNarrative(action),
-        state:{...state},
-        options:generateOptions()
-    };
-}
+/* ======================
+   日志系统
+====================== */
 
-/* ===============================
-   UI逻辑
-================================ */
+async function appendTurn(action){
 
-function disableAll(state){
-    document.querySelectorAll("button").forEach(b=>b.disabled=state);
-}
+    turn++;
+    updateHUD();
 
-function startLoading(){
-    const el=document.getElementById("loading");
-    let dots=0;
-    return setInterval(()=>{
-        dots=(dots+1)%4;
-        el.innerText="系统推演中"+".".repeat(dots);
-    },400);
-}
+    const log = document.getElementById("log");
 
-function stopLoading(interval){
-    clearInterval(interval);
-    document.getElementById("loading").innerText="";
-}
+    const turnBlock = document.createElement("div");
+    turnBlock.className = "turn";
 
-async function typeWriter(text){
-    const el=document.getElementById("narrative");
-    el.innerText="";
+    const title = document.createElement("div");
+    title.innerHTML = `<strong>—— 第 ${turn} 回合 ——</strong>`;
+    turnBlock.appendChild(title);
+
+    const choice = document.createElement("div");
+    choice.className="choice";
+    choice.innerText="> 你选择了: "+action;
+    turnBlock.appendChild(choice);
+
+    const narrative = document.createElement("div");
+    turnBlock.appendChild(narrative);
+
+    log.appendChild(turnBlock);
+
+    const text = generateNarrative(action);
+
     for(let i=0;i<text.length;i++){
-        el.innerText+=text[i];
-        await new Promise(r=>setTimeout(r,6));
+        narrative.innerText+=text[i];
+        window.scrollTo(0,document.body.scrollHeight);
+        await new Promise(r=>setTimeout(r,5));
     }
+
+    renderOptions(generateOptions());
+    saveGame();
 }
 
-async function callAI(action){
+/* ======================
+   选项系统
+====================== */
 
-    disableAll(true);
-    const loadingInterval=startLoading();
-    await new Promise(r=>setTimeout(r,1200));
-
-    const data=fakeAI(action);
-
-    stopLoading(loadingInterval);
-    await typeWriter(data.narrative);
-    renderGame(data);
-    disableAll(false);
-}
-
-function renderGame(data){
-
-    document.getElementById("hud").innerHTML=`
-时间: ${data.state.time} ｜ 地点: ${data.state.location}
-<br>
-HP:${data.state.hp} ST:${data.state.stamina} REP:${data.state.reputation} $:${data.state.money}
-`;
-
+function renderOptions(options){
     const btnDiv=document.getElementById("buttons");
     btnDiv.innerHTML="";
-
-    data.options.forEach((opt,index)=>{
+    options.forEach(opt=>{
         const btn=document.createElement("button");
-        btn.style.animationDelay=(index*0.1)+"s";
         btn.innerText=opt.id+". "+opt.text;
-        btn.onclick=()=>callAI(opt.text);
+        btn.onclick=()=>appendTurn(opt.text);
         btnDiv.appendChild(btn);
     });
 }
 
+/* ======================
+   自由输入
+====================== */
+
 function sendFree(){
     const val=document.getElementById("freeInput").value;
     if(!val)return;
+
+    if(val==="状态"){
+        alert(JSON.stringify(state,null,2));
+        return;
+    }
+
     document.getElementById("freeInput").value="";
-    callAI(val);
+    appendTurn(val);
 }
 
-callAI("生成角色与开场剧情。");
+/* ======================
+   初始化
+====================== */
+
+if(!loadGame()){
+    appendTurn("生成角色与开场剧情");
+}
 
 </script>
 </body>
