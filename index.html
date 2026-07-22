@@ -20,37 +20,50 @@ body{
 }
 
 h2{
-    font-size:20px;
     text-align:center;
+    font-size:18px;
 }
 
 #narrative{
     white-space:pre-wrap;
     line-height:1.6;
-    margin-bottom:15px;
     min-height:220px;
     font-size:14px;
 }
 
+.cursor{
+    display:inline-block;
+    width:8px;
+    background:#00ffcc;
+    margin-left:3px;
+    animation:blink 1s infinite;
+}
+
+@keyframes blink{
+    0%{opacity:1;}
+    50%{opacity:0;}
+    100%{opacity:1;}
+}
+
+#loading{
+    font-size:12px;
+    margin:10px 0;
+    color:#00ffaa;
+    min-height:20px;
+}
+
 button{
-    display:block;
     width:100%;
     padding:14px;
     margin-top:8px;
     background:#00ffcc;
     border:none;
-    cursor:pointer;
     font-family:monospace;
     font-size:14px;
 }
 
 button:disabled{
     background:#003333;
-    cursor:not-allowed;
-}
-
-button:hover{
-    background:#00ccaa;
 }
 
 #freeInput{
@@ -69,19 +82,13 @@ button:hover{
     padding-top:10px;
     font-size:13px;
 }
-
-#loading{
-    margin-top:10px;
-    height:20px;
-    font-size:12px;
-    color:#00ffcc;
-}
 </style>
 </head>
 
 <body>
 
 <div id="container">
+
 <h2>赛博朋克 · 沉浸式RPG</h2>
 
 <div id="narrative">正在连接夜之城主服务器...</div>
@@ -94,54 +101,75 @@ button:hover{
 <button onclick="sendFree()">执行行动</button>
 
 <div id="status"></div>
+
 </div>
 
 <script>
 
 const SYSTEM_PROMPT = `
 你是一名赛博朋克世界的沉浸式RPG主持人。
-⚠️ 你必须只返回 JSON，不得返回任何解释或额外文本。
-格式严格：
+必须只返回JSON：
 {
-  "narrative": "",
-  "state": { "hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":"" },
+  "narrative":"",
+  "state":{"hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":""},
   "options":[{"id":1,"text":""},{"id":2,"text":""},{"id":3,"text":""}]
 }
-沉浸规则：
+规则：
 - 第二人称
-- 感官描写
-- 时间地点必须变化
-- narrative 400-600字
-- 每轮必须3个选项
+- 强沉浸感
+- 400-600字
+- 每轮3选项
 - 只返回JSON
 `;
 
 let conversation = [
-    { role: "system", content: SYSTEM_PROMPT }
+    { role:"system", content:SYSTEM_PROMPT }
 ];
-
-let loadingInterval = null;
-
-function startLoading(){
-    const loadingDiv = document.getElementById("loading");
-    let dots = 0;
-    disableButtons(true);
-
-    loadingInterval = setInterval(()=>{
-        dots = (dots + 1) % 6;
-        loadingDiv.innerText = "连接神经网络中" + ".".repeat(dots);
-    }, 400);
-}
-
-function stopLoading(){
-    clearInterval(loadingInterval);
-    document.getElementById("loading").innerText = "";
-    disableButtons(false);
-}
 
 function disableButtons(state){
     document.querySelectorAll("button").forEach(btn=>{
         btn.disabled = state;
+    });
+}
+
+function startLoading(){
+    disableButtons(true);
+    const loading = document.getElementById("loading");
+    let dots = 0;
+
+    return setInterval(()=>{
+        dots = (dots+1)%4;
+        loading.innerText = "AI正在生成剧情" + ".".repeat(dots);
+    },500);
+}
+
+function stopLoading(interval){
+    clearInterval(interval);
+    document.getElementById("loading").innerText = "";
+    disableButtons(false);
+}
+
+function typeWriter(text, element, speed=15){
+    return new Promise(resolve=>{
+        element.innerHTML = "";
+        let i=0;
+
+        const cursor = document.createElement("span");
+        cursor.className="cursor";
+
+        function typing(){
+            if(i<text.length){
+                element.innerHTML = text.substring(0,i+1);
+                element.appendChild(cursor);
+                i++;
+                element.scrollTop = element.scrollHeight;
+                setTimeout(typing,speed);
+            }else{
+                cursor.remove();
+                resolve();
+            }
+        }
+        typing();
     });
 }
 
@@ -151,71 +179,65 @@ async function startGame(){
 
 async function callAI(message){
 
-    conversation.push({ role: "user", content: message });
+    conversation.push({role:"user",content:message});
+    const loadingInterval = startLoading();
 
-    startLoading();
-
-    try {
-
-        const response = await fetch("/api/game", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "deepseek-chat",
-                messages: conversation
+    try{
+        const response = await fetch("/api/game",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({
+                model:"deepseek-chat",
+                messages:conversation
             })
         });
 
         const data = await response.json();
+        stopLoading(loadingInterval);
 
-        stopLoading();
-
-        if (!data.choices) {
+        if(!data.choices){
             document.getElementById("narrative").innerText =
-                "服务器异常：\n" + JSON.stringify(data, null, 2);
+                "服务器异常："+JSON.stringify(data,null,2);
             return;
         }
 
         const reply = data.choices[0].message.content;
 
         let parsed;
-
-        try {
+        try{
             parsed = JSON.parse(reply);
-        } catch (e) {
+        }catch(e){
             document.getElementById("narrative").innerText =
-                "JSON解析失败：\n" + reply;
+                "JSON解析失败："+reply;
             return;
         }
 
-        renderGame(parsed);
+        conversation.push({role:"assistant",content:reply});
+        await renderGame(parsed);
 
-        conversation.push({ role: "assistant", content: reply });
-
-    } catch (error){
-        stopLoading();
+    }catch(error){
+        stopLoading(loadingInterval);
         document.getElementById("narrative").innerText =
-            "连接服务器失败：\n" + error.message;
+            "连接服务器失败："+error.message;
     }
 }
 
-function renderGame(data){
+async function renderGame(data){
 
-    document.getElementById("narrative").innerText = data.narrative;
+    const narrativeEl = document.getElementById("narrative");
+    await typeWriter(data.narrative,narrativeEl,12);
 
     const buttonsDiv = document.getElementById("buttons");
-    buttonsDiv.innerHTML = "";
+    buttonsDiv.innerHTML="";
 
-    data.options.forEach(option => {
-        const btn = document.createElement("button");
-        btn.innerText = option.id + ". " + option.text;
-        btn.onclick = () => callAI(option.text);
+    data.options.forEach(option=>{
+        const btn=document.createElement("button");
+        btn.innerText=option.id+". "+option.text;
+        btn.onclick=()=>callAI(option.text);
         buttonsDiv.appendChild(btn);
     });
 
-    document.getElementById("status").innerHTML = `
+    document.getElementById("status").innerHTML=`
 时间: ${data.state.time}<br>
 地点: ${data.state.location}<br><br>
 生命值: ${data.state.hp}<br>
@@ -226,15 +248,14 @@ function renderGame(data){
 }
 
 function sendFree(){
-    const text = document.getElementById("freeInput").value;
-    if(!text) return;
-    document.getElementById("freeInput").value = "";
+    const text=document.getElementById("freeInput").value;
+    if(!text)return;
+    document.getElementById("freeInput").value="";
     callAI(text);
 }
 
 startGame();
 
 </script>
-
 </body>
 </html>
