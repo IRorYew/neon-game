@@ -14,6 +14,7 @@ body{
     display:flex;
     flex-direction:column;
     height:100vh;
+    overflow:hidden;
 }
 
 /* HUD */
@@ -22,6 +23,7 @@ body{
     border-bottom:1px solid #00ffcc;
     padding:8px;
     font-size:13px;
+    box-shadow:0 0 10px #00ffcc55;
 }
 
 /* 主体 */
@@ -31,25 +33,22 @@ body{
     overflow:hidden;
 }
 
-/* 左侧 */
+/* 左侧面板 */
 #sidebar{
     width:260px;
+    background:#0a0a0a;
     border-right:1px solid #003333;
     padding:15px;
-    background:#0a0a0a;
     overflow-y:auto;
 }
 
-.panel-title{
-    font-weight:bold;
-    margin-top:15px;
-    margin-bottom:5px;
-    border-bottom:1px solid #003333;
-    padding-bottom:3px;
-}
-
-.stat{
-    margin:4px 0;
+/* 右侧面板 */
+#rightbar{
+    width:260px;
+    background:#0a0a0a;
+    border-left:1px solid #003333;
+    padding:15px;
+    overflow-y:auto;
 }
 
 /* 剧情区 */
@@ -59,6 +58,7 @@ body{
     overflow-y:auto;
 }
 
+/* 回合 */
 .turn{
     margin-bottom:25px;
     border-left:3px solid #00ffcc;
@@ -68,6 +68,37 @@ body{
 .choice{
     color:#00ffaa;
     margin:10px 0;
+}
+
+/* 面板标题 */
+.panel-title{
+    font-weight:bold;
+    margin-top:15px;
+    margin-bottom:8px;
+    border-bottom:1px solid #003333;
+    padding-bottom:3px;
+    text-shadow:0 0 6px #00ffcc;
+}
+
+/* 能量条 */
+.bar-container{
+    width:100%;
+    height:12px;
+    background:#111;
+    border:1px solid #003333;
+    margin:6px 0 12px 0;
+}
+
+.bar{
+    height:100%;
+    background:linear-gradient(90deg,#00ffcc,#00ffaa);
+    transition:width 0.4s ease;
+    box-shadow:0 0 8px #00ffcc;
+}
+
+.bar.hp{
+    background:linear-gradient(90deg,#ff0033,#ff3366);
+    box-shadow:0 0 8px #ff0033;
 }
 
 /* 输入区 */
@@ -92,9 +123,29 @@ button{
     border:1px solid #00ffcc;
     color:#00ffcc;
     cursor:pointer;
+    transition:all 0.2s;
 }
+
 button:hover{
     background:#003333;
+    box-shadow:0 0 8px #00ffcc;
+}
+
+/* 扫描线 */
+.scanline{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:2px;
+    background:#00ffcc33;
+    animation:scan 5s linear infinite;
+    pointer-events:none;
+}
+
+@keyframes scan{
+    0%{top:0}
+    100%{top:100%}
 }
 </style>
 </head>
@@ -108,10 +159,27 @@ button:hover{
 <div id="sidebar">
     <div class="panel-title">角色状态</div>
     <div id="statusPanel"></div>
+
+    <div class="panel-title">技能</div>
+    <div>街头生存 Lv2</div>
+    <div>枪械精通 Lv2</div>
+    <div>黑客技术 Lv1</div>
+
+    <div class="panel-title">装备</div>
+    <div>神经链接义体</div>
+    <div>廉价手枪（12发）</div>
 </div>
 
 <div id="content">
     <div id="log"></div>
+</div>
+
+<div id="rightbar">
+    <div class="panel-title">任务</div>
+    <div>暂无</div>
+
+    <div class="panel-title">NPC关系</div>
+    <div>暂无联系人</div>
 </div>
 
 </div>
@@ -120,6 +188,8 @@ button:hover{
     <input id="freeInput" placeholder="输入你的行动..." />
     <button onclick="sendFree()">执行</button>
 </div>
+
+<div class="scanline"></div>
 
 <script>
 
@@ -152,19 +222,30 @@ content:`
 `
 }];
 
-/* 更新HUD */
+/* HUD */
 function updateHUD(){
     document.getElementById("hud").innerHTML =
         `回合 ${turn} ｜ 时间 ${state.time} ｜ 地点 ${state.location} ｜ 资金 €${state.money}`;
 }
 
-/* 更新侧栏 */
+/* 左侧状态 */
 function updateSidebar(){
+    const hpPercent = Math.max(0,state.hp);
+    const staminaPercent = Math.max(0,state.stamina);
+
     document.getElementById("statusPanel").innerHTML = `
-        <div class="stat">HP: ${state.hp}</div>
-        <div class="stat">耐力: ${state.stamina}</div>
-        <div class="stat">声誉: ${state.reputation}</div>
-        <div class="stat">资金: ${state.money}</div>
+        <div>HP ${state.hp}</div>
+        <div class="bar-container">
+            <div class="bar hp" style="width:${hpPercent}%"></div>
+        </div>
+
+        <div>耐力 ${state.stamina}</div>
+        <div class="bar-container">
+            <div class="bar" style="width:${staminaPercent}%"></div>
+        </div>
+
+        <div>声誉 ${state.reputation}</div>
+        <div>资金 €${state.money}</div>
     `;
 }
 
@@ -176,7 +257,6 @@ async function appendTurn(action){
 
     const block = document.createElement("div");
     block.className="turn";
-
     block.innerHTML=`<div class="choice">> ${action}</div>`;
     document.getElementById("log").appendChild(block);
 
@@ -190,8 +270,8 @@ async function appendTurn(action){
 
     const data = await response.json();
 
-    if(!data.choices){
-        block.innerHTML += "<div>服务器错误："+JSON.stringify(data)+"</div>";
+    if(!data || !data.choices){
+        block.innerHTML += "<div style='color:red'>服务器返回异常</div>";
         return;
     }
 
@@ -201,7 +281,7 @@ async function appendTurn(action){
     try{
         parsed = JSON.parse(reply);
     }catch(e){
-        block.innerHTML += "<div>JSON错误："+reply+"</div>";
+        block.innerHTML += "<div style='color:red'>JSON解析失败</div>";
         return;
     }
 
@@ -228,7 +308,6 @@ async function appendTurn(action){
     });
 }
 
-/* 自由输入 */
 function sendFree(){
     const val=document.getElementById("freeInput").value;
     if(!val)return;
@@ -236,7 +315,6 @@ function sendFree(){
     appendTurn(val);
 }
 
-/* 初始化 */
 updateHUD();
 updateSidebar();
 appendTurn("生成角色与开场剧情");
