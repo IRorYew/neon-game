@@ -17,40 +17,36 @@ body{
     overflow:hidden;
 }
 
-/* 强霓虹HUD */
+/* HUD */
 #hud{
     padding:8px;
     font-size:14px;
     background:rgba(0,0,0,0.9);
     border-bottom:1px solid #00ffee;
     text-shadow:0 0 8px #00ffee;
-    box-shadow:0 0 20px #00ffee33;
 }
 
-/* 主布局 */
+/* 主体 */
 #main{
     flex:1;
     display:flex;
     overflow:hidden;
 }
 
-/* 玻璃拟态面板 */
 #sidebar,#rightbar{
     width:260px;
     padding:15px;
     backdrop-filter:blur(8px);
     background:rgba(0,255,255,0.03);
     border-right:1px solid #00ffee22;
-    box-shadow:0 0 20px #00ffee22 inset;
     overflow-y:auto;
 }
 
 #rightbar{
-    border-right:none;
     border-left:1px solid #00ffee22;
+    border-right:none;
 }
 
-/* 剧情区 */
 #content{
     flex:1;
     padding:25px;
@@ -73,17 +69,6 @@ body{
 .choice{
     color:#00ffaa;
     margin:10px 0;
-    text-shadow:0 0 6px #00ffaa;
-}
-
-/* 面板标题 */
-.panel-title{
-    font-weight:bold;
-    margin-top:15px;
-    margin-bottom:8px;
-    border-bottom:1px solid #00ffee33;
-    padding-bottom:3px;
-    text-shadow:0 0 8px #00ffee;
 }
 
 /* 能量条 */
@@ -93,29 +78,19 @@ body{
     background:#001111;
     border:1px solid #00ffee33;
     margin:6px 0 15px 0;
-    overflow:hidden;
 }
 
 .bar{
     height:100%;
     transition:width 0.4s ease;
-    box-shadow:0 0 10px currentColor;
 }
 
 .bar.hp{
     background:linear-gradient(90deg,#ff0033,#ff3366);
-    color:#ff0033;
-    animation:pulseHP 1.5s infinite alternate;
 }
 
 .bar.st{
     background:linear-gradient(90deg,#00ffee,#00ffaa);
-    color:#00ffee;
-}
-
-@keyframes pulseHP{
-    from{box-shadow:0 0 8px #ff0033;}
-    to{box-shadow:0 0 20px #ff0033;}
 }
 
 /* 输入区 */
@@ -132,41 +107,18 @@ body{
     background:#000;
     color:#00ffee;
     border:1px solid #00ffee;
-    box-shadow:0 0 10px #00ffee22 inset;
 }
 
-/* 赛博按钮 */
 button{
     padding:10px 18px;
     background:transparent;
     border:1px solid #00ffee;
     color:#00ffee;
     cursor:pointer;
-    position:relative;
-    overflow:hidden;
-    transition:all 0.2s;
 }
 
 button:hover{
     background:#00ffee11;
-    box-shadow:0 0 15px #00ffee;
-}
-
-/* 扫描线 */
-.scanline{
-    position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:2px;
-    background:#00ffee33;
-    animation:scan 6s linear infinite;
-    pointer-events:none;
-}
-
-@keyframes scan{
-    0%{top:0}
-    100%{top:100%}
 }
 </style>
 </head>
@@ -178,7 +130,7 @@ button:hover{
 <div id="main">
 
 <div id="sidebar">
-    <div class="panel-title">角色状态</div>
+    <div>角色状态</div>
     <div id="statusPanel"></div>
 </div>
 
@@ -187,10 +139,8 @@ button:hover{
 </div>
 
 <div id="rightbar">
-    <div class="panel-title">任务</div>
-    <div>暂无任务</div>
-    <div class="panel-title">NPC关系</div>
-    <div>暂无联系人</div>
+    <div>任务</div>
+    <div>暂无</div>
 </div>
 
 </div>
@@ -200,11 +150,35 @@ button:hover{
     <button onclick="sendFree()">执行</button>
 </div>
 
-<div class="scanline"></div>
-
 <script>
+
 let turn=0;
-let state={hp:80,stamina:65,reputation:15,money:200,time:"2077年2月14日 凌晨2:47",location:"夜之城"};
+
+let state={
+    hp:80,
+    stamina:65,
+    reputation:15,
+    money:200,
+    time:"2077年2月14日 凌晨2:47",
+    location:"夜之城"
+};
+
+let conversation=[{
+role:"system",
+content:`
+你是赛博朋克2007沉浸式RPG主持人系统。
+必须返回JSON：
+{
+ "narrative":"",
+ "state":{"hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":""},
+ "options":[{"id":1,"text":""},{"id":2,"text":""},{"id":3,"text":""}]
+}
+规则：
+- narrative 450-650字
+- 必须有冲突
+- 只返回JSON
+`
+}];
 
 function updateHUD(){
     document.getElementById("hud").innerHTML=
@@ -214,20 +188,82 @@ function updateHUD(){
 function updateSidebar(){
     document.getElementById("statusPanel").innerHTML=`
         <div>HP ${state.hp}</div>
-        <div class="bar-container">
-            <div class="bar hp" style="width:${state.hp}%"></div>
-        </div>
+        <div class="bar-container"><div class="bar hp" style="width:${state.hp}%"></div></div>
         <div>耐力 ${state.stamina}</div>
-        <div class="bar-container">
-            <div class="bar st" style="width:${state.stamina}%"></div>
-        </div>
+        <div class="bar-container"><div class="bar st" style="width:${state.stamina}%"></div></div>
         <div>声誉 ${state.reputation}</div>
         <div>资金 €${state.money}</div>
     `;
 }
 
+async function appendTurn(action){
+
+    turn++;
+    updateHUD();
+
+    const block=document.createElement("div");
+    block.className="turn";
+    block.innerHTML=`<div class="choice">> ${action}</div>`;
+    document.getElementById("log").appendChild(block);
+
+    conversation.push({role:"user",content:action});
+
+    const response=await fetch("http://localhost:3000/api/game",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({messages:conversation})
+    });
+
+    const data=await response.json();
+
+    if(!data || !data.choices){
+        block.innerHTML+="<div style='color:red'>服务器异常</div>";
+        return;
+    }
+
+    const reply=data.choices[0].message.content;
+    let parsed;
+
+    try{
+        parsed=JSON.parse(reply);
+    }catch{
+        block.innerHTML+="<div style='color:red'>JSON解析失败</div>";
+        return;
+    }
+
+    conversation.push({role:"assistant",content:reply});
+    state=parsed.state;
+    updateHUD();
+    updateSidebar();
+
+    const textDiv=document.createElement("div");
+    block.appendChild(textDiv);
+
+    for(let i=0;i<parsed.narrative.length;i++){
+        textDiv.innerText+=parsed.narrative[i];
+        document.getElementById("content").scrollTop=999999;
+        await new Promise(r=>setTimeout(r,5));
+    }
+
+    parsed.options.forEach(opt=>{
+        const btn=document.createElement("button");
+        btn.innerText=opt.id+". "+opt.text;
+        btn.onclick=()=>appendTurn(opt.text);
+        block.appendChild(btn);
+    });
+}
+
+function sendFree(){
+    const val=document.getElementById("freeInput").value;
+    if(!val)return;
+    document.getElementById("freeInput").value="";
+    appendTurn(val);
+}
+
 updateHUD();
 updateSidebar();
+appendTurn("生成角色与开场剧情");
+
 </script>
 
 </body>
