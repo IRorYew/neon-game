@@ -2,6 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>赛博朋克沉浸式RPG</title>
 
 <style>
@@ -10,49 +11,70 @@ body{
     color:#00ffcc;
     font-family:monospace;
     margin:0;
-    padding:20px;
+    padding:15px;
 }
 
 #container{
-    max-width:1000px;
+    max-width:700px;
     margin:auto;
+}
+
+h2{
+    font-size:20px;
+    text-align:center;
 }
 
 #narrative{
     white-space:pre-wrap;
-    line-height:1.7;
-    margin-bottom:20px;
-    min-height:300px;
+    line-height:1.6;
+    margin-bottom:15px;
+    min-height:220px;
+    font-size:14px;
 }
 
 button{
     display:block;
     width:100%;
-    padding:12px;
-    margin-top:10px;
+    padding:14px;
+    margin-top:8px;
     background:#00ffcc;
     border:none;
     cursor:pointer;
     font-family:monospace;
+    font-size:14px;
+}
+
+button:disabled{
+    background:#003333;
+    cursor:not-allowed;
 }
 
 button:hover{
     background:#00ccaa;
 }
 
-input{
+#freeInput{
     width:100%;
-    padding:10px;
+    padding:12px;
     margin-top:10px;
     background:#111;
     color:#00ffcc;
     border:1px solid #00ffcc;
+    font-size:14px;
 }
 
 #status{
-    margin-top:20px;
+    margin-top:15px;
     border-top:1px solid #00ffcc;
-    padding-top:15px;
+    padding-top:10px;
+    font-size:13px;
+}
+
+#loading{
+    margin-top:10px;
+    height:20px;
+    font-size:12px;
+    color:#00ffcc;
 }
 </style>
 </head>
@@ -60,9 +82,11 @@ input{
 <body>
 
 <div id="container">
-<h2>赛博朋克 · 沉浸式RPG系统</h2>
+<h2>赛博朋克 · 沉浸式RPG</h2>
 
-<div id="narrative">正在构建夜之城...</div>
+<div id="narrative">正在连接夜之城主服务器...</div>
+
+<div id="loading"></div>
 
 <div id="buttons"></div>
 
@@ -76,49 +100,50 @@ input{
 
 const SYSTEM_PROMPT = `
 你是一名赛博朋克世界的沉浸式RPG主持人。
-
 ⚠️ 你必须只返回 JSON，不得返回任何解释或额外文本。
-
-格式必须严格如下：
-
+格式严格：
 {
-  "narrative": "剧情正文",
-  "state": {
-    "hp": 数字,
-    "stamina": 数字,
-    "reputation": 数字,
-    "money": 数字,
-    "time": "当前时间",
-    "location": "当前地点"
-  },
-  "options": [
-    { "id": 1, "text": "行动描述" },
-    { "id": 2, "text": "行动描述" },
-    { "id": 3, "text": "行动描述" }
-  ]
+  "narrative": "",
+  "state": { "hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":"" },
+  "options":[{"id":1,"text":""},{"id":2,"text":""},{"id":3,"text":""}]
 }
-
 沉浸规则：
-
-- 使用第二人称（你）
-- 每轮必须描写视觉/声音/气味等感官细节
-- 必须标注时间与地点
-- 行动消耗时间
-- 世界会变化
-- NPC记住你的行为
-- 失败必须有真实后果
+- 第二人称
+- 感官描写
+- 时间地点必须变化
 - narrative 400-600字
-- 每轮必须给3个选项
-- 不得使用代码块
-- 不得解释JSON
-- 只返回 JSON
-
-现在开始游戏。
+- 每轮必须3个选项
+- 只返回JSON
 `;
 
 let conversation = [
     { role: "system", content: SYSTEM_PROMPT }
 ];
+
+let loadingInterval = null;
+
+function startLoading(){
+    const loadingDiv = document.getElementById("loading");
+    let dots = 0;
+    disableButtons(true);
+
+    loadingInterval = setInterval(()=>{
+        dots = (dots + 1) % 6;
+        loadingDiv.innerText = "连接神经网络中" + ".".repeat(dots);
+    }, 400);
+}
+
+function stopLoading(){
+    clearInterval(loadingInterval);
+    document.getElementById("loading").innerText = "";
+    disableButtons(false);
+}
+
+function disableButtons(state){
+    document.querySelectorAll("button").forEach(btn=>{
+        btn.disabled = state;
+    });
+}
 
 async function startGame(){
     await callAI("生成角色与开场剧情。");
@@ -127,6 +152,8 @@ async function startGame(){
 async function callAI(message){
 
     conversation.push({ role: "user", content: message });
+
+    startLoading();
 
     try {
 
@@ -142,6 +169,8 @@ async function callAI(message){
         });
 
         const data = await response.json();
+
+        stopLoading();
 
         if (!data.choices) {
             document.getElementById("narrative").innerText =
@@ -166,6 +195,7 @@ async function callAI(message){
         conversation.push({ role: "assistant", content: reply });
 
     } catch (error){
+        stopLoading();
         document.getElementById("narrative").innerText =
             "连接服务器失败：\n" + error.message;
     }
@@ -186,12 +216,11 @@ function renderGame(data){
     });
 
     document.getElementById("status").innerHTML = `
-时间: ${data.state.time}  
-地点: ${data.state.location}  
-
-生命值: ${data.state.hp}  
-耐力: ${data.state.stamina}  
-声誉: ${data.state.reputation}  
+时间: ${data.state.time}<br>
+地点: ${data.state.location}<br><br>
+生命值: ${data.state.hp}<br>
+耐力: ${data.state.stamina}<br>
+声誉: ${data.state.reputation}<br>
 资金: ${data.state.money}
 `;
 }
