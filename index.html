@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>夜之城 · AI沉浸式RPG</title>
+<title>夜之城 · 主持人系统V1</title>
 
 <style>
 body{
@@ -17,7 +17,7 @@ body{
     position:fixed;
     top:0;
     width:100%;
-    background:rgba(0,0,0,0.9);
+    background:rgba(0,0,0,0.95);
     border-bottom:1px solid #00ffcc;
     padding:8px;
     font-size:12px;
@@ -25,28 +25,14 @@ body{
 
 #container{
     padding:70px 15px 20px;
-    max-width:750px;
+    max-width:800px;
     margin:auto;
 }
 
 #narrative{
     white-space:pre-wrap;
-    line-height:1.6;
-    min-height:220px;
-    position:relative;
-}
-
-.scanline{
-    position:absolute;
-    width:100%;
-    height:2px;
-    background:#00ffcc33;
-    animation:scan 3s linear infinite;
-}
-
-@keyframes scan{
-    0%{top:0}
-    100%{top:100%}
+    line-height:1.7;
+    min-height:240px;
 }
 
 button{
@@ -88,64 +74,109 @@ button:disabled{opacity:0.5;}
 <div id="hud">系统初始化中...</div>
 
 <div id="container">
-
-<div id="narrative">
-<div class="scanline"></div>
-正在连接夜之城主脑...
-</div>
-
+<div id="narrative">正在构建夜之城数据流...</div>
 <div id="loading"></div>
-
 <div id="buttons"></div>
-
 <input id="freeInput" placeholder="输入你的自由行动..." />
 <button onclick="sendFree()">执行行动</button>
-
 </div>
 
 <script>
 
+/* ===============================
+   职业级主持人内核Prompt
+================================ */
+
+const SYSTEM_PROMPT = `
+你是赛博朋克2007沉浸式RPG主持人系统。
+
+【绝对规则】
+1. 只能返回JSON。
+2. narrative必须450-650字。
+3. 必须包含视觉、声音、气味。
+4. 必须标明时间与地点。
+5. 每轮必须发生冲突或风险。
+6. NPC必须主动行动。
+7. 行动必须消耗时间或资源。
+8. 不得解释规则。
+9. 不得写总结句。
+
+【输出格式】
+{
+ "narrative": "",
+ "state": {
+   "hp":0,
+   "stamina":0,
+   "reputation":0,
+   "money":0,
+   "time":"",
+   "location":""
+ },
+ "options":[
+   {"id":1,"text":""},
+   {"id":2,"text":""},
+   {"id":3,"text":""}
+ ]
+}
+`;
+
+/* ===============================
+   当前先使用本地AI模拟器
+================================ */
+
 let state={
-    hp:100,
-    stamina:100,
-    reputation:0,
-    money:500,
-    time:"22:10",
-    location:"夜之城 · 贫民区"
+    hp:70,
+    stamina:46,
+    reputation:20,
+    money:1270,
+    time:"21:15",
+    location:"夜之城 · 沃森区 · 数据黑市"
 };
 
-function randomNarrative(action){
-    return `时间 ${state.time} ｜ 地点 ${state.location}
+function generateNarrative(action){
 
-霓虹灯在雨水中扭曲成破碎的光影。空气里混着臭氧与廉价酒精的味道。远处机械义肢运转的金属声此起彼伏。
+    state.time="21:"+Math.floor(Math.random()*60).toString().padStart(2,"0");
+    state.stamina-=5;
+
+    return `
+时间 ${state.time}
+地点 ${state.location}
+
+雨水顺着破裂的霓虹灯壳滴落，在油渍积水里泛出紫红色光晕。远处改装引擎低沉轰鸣，空气混着臭氧与廉价合成酒精的刺鼻味。
 
 你刚刚选择：${action}
 
-一辆改装悬浮摩托从街角掠过，溅起冷雨。街边的流浪黑客盯着你，像在评估你的价值。
+巷道另一端传来金属义体关节转动的清脆声响。一个带红色光学义眼的男人正通过神经频道低声汇报你的位置。与此同时，本地频道闪过一条新闻推送——沃森区两分钟前发生帮派冲突，霓虹帮正在封锁三个街区。
 
-城市正在记录你的每一次选择。`;
+时间在流逝。离交货还剩不到40分钟。
+
+你意识到芯片外壳温度升高，也许有人在远程追踪。
+
+一辆悬浮摩托突然从街口掠过，溅起冷雨。驾驶者明显在寻找某个人。
+
+城市正在收紧。
+`;
 }
 
 function generateOptions(){
     return [
-        {id:1,text:"走进昏暗的小巷"},
-        {id:2,text:"联系地下黑客"},
-        {id:3,text:"查看个人终端数据"}
+        {id:1,text:"快速转移至高处建筑（调用属性：反应，难度：8，消耗：耐力-10，潜在奖励：脱离追踪）"},
+        {id:2,text:"尝试黑入芯片追踪信号源（调用属性：智力，难度：7，消耗：时间-30分钟，潜在奖励：掌握敌方位置）"},
+        {id:3,text:"混入街边人群降低存在感（调用属性：镇定，难度：6，消耗：时间-15分钟，潜在奖励：规避正面冲突）"}
     ];
 }
 
 function fakeAI(action){
-
-    state.stamina-=5;
-    state.time="22:"+Math.floor(Math.random()*60).toString().padStart(2,"0");
-    state.money+=Math.floor(Math.random()*50);
-
     return {
-        narrative: randomNarrative(action),
-        state: {...state},
-        options: generateOptions()
+        narrative: generateNarrative(action),
+        state:{...state},
+        options:generateOptions()
     };
 }
+
+/* ===============================
+   UI逻辑
+================================ */
 
 function disableAll(state){
     document.querySelectorAll("button").forEach(b=>b.disabled=state);
@@ -156,7 +187,7 @@ function startLoading(){
     let dots=0;
     return setInterval(()=>{
         dots=(dots+1)%4;
-        el.innerText="AI正在生成剧情"+".".repeat(dots);
+        el.innerText="系统推演中"+".".repeat(dots);
     },400);
 }
 
@@ -170,7 +201,7 @@ async function typeWriter(text){
     el.innerText="";
     for(let i=0;i<text.length;i++){
         el.innerText+=text[i];
-        await new Promise(r=>setTimeout(r,8));
+        await new Promise(r=>setTimeout(r,6));
     }
 }
 
@@ -178,16 +209,13 @@ async function callAI(action){
 
     disableAll(true);
     const loadingInterval=startLoading();
-
-    await new Promise(r=>setTimeout(r,1500)); // 模拟AI延迟
+    await new Promise(r=>setTimeout(r,1200));
 
     const data=fakeAI(action);
 
     stopLoading(loadingInterval);
-
     await typeWriter(data.narrative);
     renderGame(data);
-
     disableAll(false);
 }
 
