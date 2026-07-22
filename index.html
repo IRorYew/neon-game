@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>夜之城 · RPG引擎V2</title>
+<title>夜之城 · AI RPG</title>
 
 <style>
 body{
@@ -25,7 +25,7 @@ body{
 }
 
 #container{
-    padding:80px 15px 30px;
+    padding:80px 15px 40px;
     max-width:800px;
     margin:auto;
 }
@@ -33,7 +33,7 @@ body{
 .turn{
     margin-top:25px;
     border-left:3px solid #00ffcc;
-    padding-left:10px;
+    padding-left:12px;
 }
 
 .choice{
@@ -62,7 +62,7 @@ button{
 </head>
 <body>
 
-<div id="hud"></div>
+<div id="hud">系统初始化中...</div>
 
 <div id="container">
 <div id="log"></div>
@@ -74,9 +74,9 @@ button{
 
 <script>
 
-/* ======================
-   核心状态
-====================== */
+/* =========================
+   全局状态
+========================= */
 
 let turn = 0;
 
@@ -86,18 +86,45 @@ let state = {
     reputation:20,
     money:1270,
     time:"21:15",
-    location:"夜之城 · 沃森区"
+    location:"夜之城"
 };
 
-/* ======================
-   本地存档系统
-====================== */
+let conversation = [
+{
+role:"system",
+content:`
+你是赛博朋克2007沉浸式RPG主持人系统。
+
+必须返回JSON格式：
+{
+ "narrative":"",
+ "state":{"hp":0,"stamina":0,"reputation":0,"money":0,"time":"","location":""},
+ "options":[{"id":1,"text":""},{"id":2,"text":""},{"id":3,"text":""}]
+}
+
+规则：
+- narrative必须450-650字
+- 必须有视觉/声音/气味描写
+- 必须标明时间与地点
+- 每轮必须有冲突或风险
+- 世界会变化
+- NPC会主动行动
+- 不得解释规则
+- 只返回JSON
+`
+}
+];
+
+/* =========================
+   存档
+========================= */
 
 function saveGame(){
     localStorage.setItem("rpg_save", JSON.stringify({
         turn,
         state,
-        log: document.getElementById("log").innerHTML
+        log: document.getElementById("log").innerHTML,
+        conversation
     }));
 }
 
@@ -107,6 +134,7 @@ function loadGame(){
         const data = JSON.parse(save);
         turn = data.turn;
         state = data.state;
+        conversation = data.conversation;
         document.getElementById("log").innerHTML = data.log;
         updateHUD();
         return true;
@@ -119,9 +147,9 @@ function resetGame(){
     location.reload();
 }
 
-/* ======================
+/* =========================
    HUD
-====================== */
+========================= */
 
 function updateHUD(){
     document.getElementById("hud").innerHTML = `
@@ -131,42 +159,9 @@ HP:${state.hp} ST:${state.stamina} REP:${state.reputation} $:${state.money}
 `;
 }
 
-/* ======================
-   剧情生成器（模拟）
-====================== */
-
-function generateNarrative(action){
-
-    state.stamina -= 5;
-    state.time = "21:" + Math.floor(Math.random()*60).toString().padStart(2,"0");
-
-    return `
-时间 ${state.time}
-地点 ${state.location}
-
-霓虹在雨水中扭曲，空气混着臭氧与金属粉尘的味道。
-你刚刚选择：${action}
-
-街角的监控无人机悬停片刻，红色扫描线掠过墙面。
-本地频道闪过一条帮派内部加密广播。
-
-城市并未停下。
-
-远处引擎声再次逼近。
-`;
-}
-
-function generateOptions(){
-    return [
-        {id:1,text:"寻找高处掩体（调用属性：反应，难度：8）"},
-        {id:2,text:"黑入附近监控网络（调用属性：智力，难度：7）"},
-        {id:3,text:"混入人群降低存在感（调用属性：镇定，难度：6）"}
-    ];
-}
-
-/* ======================
-   日志系统
-====================== */
+/* =========================
+   AI调用
+========================= */
 
 async function appendTurn(action){
 
@@ -176,10 +171,10 @@ async function appendTurn(action){
     const log = document.getElementById("log");
 
     const turnBlock = document.createElement("div");
-    turnBlock.className = "turn";
+    turnBlock.className="turn";
 
     const title = document.createElement("div");
-    title.innerHTML = `<strong>—— 第 ${turn} 回合 ——</strong>`;
+    title.innerHTML=`<strong>—— 第 ${turn} 回合 ——</strong>`;
     turnBlock.appendChild(title);
 
     const choice = document.createElement("div");
@@ -187,26 +182,49 @@ async function appendTurn(action){
     choice.innerText="> 你选择了: "+action;
     turnBlock.appendChild(choice);
 
-    const narrative = document.createElement("div");
-    turnBlock.appendChild(narrative);
+    const narrativeBlock=document.createElement("div");
+    turnBlock.appendChild(narrativeBlock);
 
     log.appendChild(turnBlock);
 
-    const text = generateNarrative(action);
+    conversation.push({role:"user",content:action});
 
-    for(let i=0;i<text.length;i++){
-        narrative.innerText+=text[i];
+    const response = await fetch("http://localhost:3000/api/game",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({messages:conversation})
+    });
+
+    const data = await response.json();
+
+    const reply = data.choices[0].message.content;
+
+    let parsed;
+    try{
+        parsed = JSON.parse(reply);
+    }catch(e){
+        narrativeBlock.innerText="AI格式错误："+reply;
+        return;
+    }
+
+    conversation.push({role:"assistant",content:reply});
+
+    state = parsed.state;
+    updateHUD();
+
+    for(let i=0;i<parsed.narrative.length;i++){
+        narrativeBlock.innerText+=parsed.narrative[i];
         window.scrollTo(0,document.body.scrollHeight);
         await new Promise(r=>setTimeout(r,5));
     }
 
-    renderOptions(generateOptions());
+    renderOptions(parsed.options);
     saveGame();
 }
 
-/* ======================
-   选项系统
-====================== */
+/* =========================
+   选项
+========================= */
 
 function renderOptions(options){
     const btnDiv=document.getElementById("buttons");
@@ -219,26 +237,20 @@ function renderOptions(options){
     });
 }
 
-/* ======================
+/* =========================
    自由输入
-====================== */
+========================= */
 
 function sendFree(){
     const val=document.getElementById("freeInput").value;
     if(!val)return;
-
-    if(val==="状态"){
-        alert(JSON.stringify(state,null,2));
-        return;
-    }
-
     document.getElementById("freeInput").value="";
     appendTurn(val);
 }
 
-/* ======================
+/* =========================
    初始化
-====================== */
+========================= */
 
 if(!loadGame()){
     appendTurn("生成角色与开场剧情");
